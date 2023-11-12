@@ -1,0 +1,5 @@
+target/
+crypto/pkg
+
+web/node_modules
+web/dist

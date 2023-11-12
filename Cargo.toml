@@ -1,0 +1,10 @@
+[workspace]
+
+resolver = "2"
+members = [
+    "server",
+    "crypto"
+]
+
+[profile.release.package.compost_crypto]
+opt-level = "s"

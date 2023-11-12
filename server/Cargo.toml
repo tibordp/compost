@@ -1,0 +1,52 @@
+[package]
+name = "compost_server"
+version = "0.1.0"
+authors = ["Tibor Djurica Potpara"]
+edition = "2021"
+license = "AGPL-3.0-or-later"
+
+[dependencies]
+compost_crypto = { path = "../crypto" }
+rustls = "0.21.8"
+rustls-pemfile = "1.0.4"
+smtp-proto = "0.1.1"
+tokio = { version = "1.33.0", features = ["full"] }
+tokio-rustls = "0.24.1"
+tracing = "0.1.40"
+serde = { version = "1", features = ["derive"] }
+mail-builder = "0.3.1"
+tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
+axum = { version = "0.6.20", features = ["tracing", "headers"] }
+clap = { version = "4.4.8", features = ["derive", "env"] }
+axum-server = { version = "0.5.1", features = ["tls-rustls"] }
+rust-s3 = { version = "0.33.0", default-features = false, features = [
+    "tokio-rustls-tls",
+] }
+thiserror = "1.0.50"
+hickory-resolver = { version = "0.24.0", features = [
+    "dns-over-rustls",
+    "dnssec-ring",
+] }
+elliptic-curve = { version = "0.13.6", features = ["pkcs8", "sec1"] }
+p256 = "0.13.2"
+rand_core = "0.6.4"
+hkdf = "0.12.3"
+sha2 = "0.10.8"
+base64 = "0.21.5"
+parking_lot = "0.12.1"
+moka = { version = "0.12.1", features = ["sync"] }
+rand = "0.8.5"
+time = { version = "0.3.30", features = ["formatting"] }
+serde_json = "1.0.108"
+mail-parser = { version = "0.9.1", features = ["serde_support"] }
+async-trait = "0.1.74"
+http = "0.2.11"
+jwt-simple = "0.11.9"
+proxy-header = { version = "0.1.0", features = ["tokio"] }
+tower-http = { version = "0.4.4", features = ["cors", "trace"] }
+arc-swap = "1.6.0"
+metrics-exporter-prometheus = { version = "0.12.1", default-features = false }
+metrics = "0.21.1"
+axum-prometheus = { version = "0.4.0", default-features = false }
+tokio-stream = "0.1.14"
+futures = "0.3.29"
