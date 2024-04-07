@@ -227,6 +227,7 @@ async fn inbox(
             continuation_token = list_bucket_result.next_continuation_token.clone();
 
             for object in list_bucket_result.contents {
+                #[allow(clippy::blocks_in_if_conditions)]
                 if remaining
                     .as_mut()
                     .map(|a| {

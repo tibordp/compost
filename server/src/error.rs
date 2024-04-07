@@ -45,6 +45,7 @@ pub enum Error {
     NotFound,
 
     #[error("Join error")]
+    #[allow(clippy::enum_variant_names)]
     JoinError(#[from] tokio::task::JoinError),
 
     #[allow(dead_code)]
