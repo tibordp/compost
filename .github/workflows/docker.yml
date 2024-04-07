@@ -1,0 +1,21 @@
+name: Docker
+
+on:
+  push:
+    branches: [ "master" ]
+  pull_request:
+    branches: [ "master" ]
+
+jobs:
+  build-server:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - name: Build
+      run: docker build -t registry.k8s.ojdip.net/compost-server -f Dockerfile.server .
+  build-web:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+    - name: Build
+      run: docker build -t registry.k8s.ojdip.net/compost-web -f Dockerfile.web .
