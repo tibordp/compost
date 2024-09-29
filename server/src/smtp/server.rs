@@ -53,7 +53,6 @@ pub struct SmtpServer {
     pub data: String,
     pub listeners: Vec<Listener>,
     pub tls: Option<Arc<TlsProvider>>,
-    pub max_connections: u64,
 }
 
 impl SmtpServer {
@@ -95,7 +94,7 @@ impl SmtpServer {
                         stream = listener.accept() => {
                             match stream {
                                 Ok((stream, remote_addr)) => {
-                                    metrics::increment_gauge!("smtp_sessions_active", 1.0);
+                                    metrics::gauge!("smtp_sessions_active").increment(1);
 
                                     // Convert mapped IPv6 addresses to IPv4
                                     let remote_ip = match remote_addr.ip() {
@@ -195,12 +194,17 @@ impl ServerInstance {
 
         match acceptor.accept(stream).await {
             Ok(stream) => {
+                stream
+                    .get_ref()
+                    .1
+                    .negotiated_cipher_suite()
+                    .unwrap()
+                    .suite();
+
                 tracing::info!(
                     parent: span,
                     context = "tls",
                     event = "handshake",
-                    version = ?stream.get_ref().1.protocol_version().unwrap_or(rustls::ProtocolVersion::TLSv1_3),
-                    cipher = ?stream.get_ref().1.negotiated_cipher_suite().unwrap_or(rustls::cipher_suite::TLS13_AES_128_GCM_SHA256),
                 );
                 Ok(stream)
             }

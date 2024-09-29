@@ -52,6 +52,7 @@ pub struct Recipient {
     pub address_lcase: String,
 }
 
+#[allow(dead_code)]
 #[derive(Debug)]
 pub struct Message {
     pub created: time::OffsetDateTime,
@@ -185,7 +186,8 @@ impl<T: AsyncWrite + AsyncRead + IsTls + Unpin> Session<T> {
 
         match self.manager.recipient_allowed(&rcpt).await {
             Ok(true) => {
-                metrics::counter!("smtp_recepient_verify_total", 1, "outcome" => "accepted");
+                metrics::counter!("smtp_recepient_verify_total", "outcome" => "accepted")
+                    .increment(1);
                 tracing::debug!(parent: &self.span,
                     context = "rcpt",
                     event = "success",
@@ -196,7 +198,8 @@ impl<T: AsyncWrite + AsyncRead + IsTls + Unpin> Session<T> {
                 self.write(b"250 2.1.5 OK\r\n").await
             }
             Ok(false) => {
-                metrics::counter!("smtp_recepient_verify_total", 1, "outcome" => "rejected");
+                metrics::counter!("smtp_recepient_verify_total", "outcome" => "rejected")
+                    .increment(1);
                 tracing::debug!(parent: &self.span,
                     context = "rcpt",
                     event = "error",
@@ -207,7 +210,8 @@ impl<T: AsyncWrite + AsyncRead + IsTls + Unpin> Session<T> {
                 self.rcpt_error(b"550 5.1.2 Relay not allowed.\r\n").await
             }
             Err(e) => {
-                metrics::counter!("smtp_recepient_verify_total", 1, "outcome" => "failed");
+                metrics::counter!("smtp_recepient_verify_total", "outcome" => "failed")
+                    .increment(1);
                 tracing::debug!(parent: &self.span,
                     context = "rcpt",
                     event = "error",
@@ -333,7 +337,7 @@ impl<T: AsyncWrite + AsyncRead + IsTls + Unpin> Session<T> {
         let body_len = message.body.len();
         match self.manager.store_message(message).await {
             Ok(()) => {
-                metrics::counter!("smtp_messages_total", 1, "outcome" => "processed");
+                metrics::counter!("smtp_messages_total", "outcome" => "processed").increment(1);
                 tracing::info!(
                     parent: &self.span,
                     context = "data",
@@ -348,7 +352,7 @@ impl<T: AsyncWrite + AsyncRead + IsTls + Unpin> Session<T> {
                 (b"250 2.0.0 Message queued for delivery.\r\n"[..]).into()
             }
             Err(Error::MalformedMessage) => {
-                metrics::counter!("smtp_messages_total", 1, "outcome" => "rejected");
+                metrics::counter!("smtp_messages_total", "outcome" => "rejected").increment(1);
                 tracing::info!(parent: &self.span,
                     context = "data",
                     event = "parse-failed",
@@ -358,7 +362,7 @@ impl<T: AsyncWrite + AsyncRead + IsTls + Unpin> Session<T> {
                 (&b"550 5.7.7 Failed to parse message.\r\n"[..]).into()
             }
             Err(e) => {
-                metrics::counter!("smtp_messages_total", 1, "outcome" => "failed");
+                metrics::counter!("smtp_messages_total", "outcome" => "failed").increment(1);
                 tracing::warn!(
                     parent: &self.span,
                     context = "data",
@@ -805,7 +809,7 @@ pub struct SmtpSessionManager {
 
 impl SessionManager for SmtpSessionManager {
     fn spawn(&self, session: super::server::SessionData<TcpStream>) {
-        metrics::counter!("smtp_sessions_total", 1);
+        metrics::counter!("smtp_sessions_total").increment(1);
 
         // Create session
         let configuration = self.configuration.clone();
@@ -892,7 +896,7 @@ impl SessionManager for SmtpSessionManager {
                 session.handle_conn().await;
             }
 
-            metrics::increment_gauge!("smtp_sessions_active", -1.0);
+            metrics::gauge!("smtp_sessions_active").decrement(1);
         });
     }
 

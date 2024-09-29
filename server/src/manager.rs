@@ -530,7 +530,7 @@ impl Manager {
             );
 
             self.bucket
-                .with_extra_headers(extra_headers)
+                .with_extra_headers(extra_headers)?
                 .put_object(inbox_key.to_string(), &index_entry.to_bytes())
                 .await?;
 

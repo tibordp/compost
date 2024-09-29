@@ -106,15 +106,14 @@ async fn run(args: Args) -> Result<()> {
     let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
 
     let s3_creds = Credentials::default()?;
-    let s3_region = if let Some(endpoint) = &args.bucket_endpoint {
-        s3::Region::Custom {
-            region: args.bucket_region.clone(),
-            endpoint: endpoint.clone(),
-        }
-    } else {
-        args.bucket_region.parse().unwrap()
+    let s3_region = s3::Region::Custom {
+        region: args.bucket_region.clone(),
+        endpoint: args
+            .bucket_endpoint
+            .unwrap_or_else(|| format!("s3.dualstack.{}.amazonaws.com", args.bucket_region)),
     };
-    let bucket = s3::Bucket::new(&args.bucket_name, s3_region, s3_creds)?;
+
+    let bucket = *s3::Bucket::new(&args.bucket_name, s3_region, s3_creds)?;
     let resolver = TokioAsyncResolver::tokio_from_system_conf()?;
 
     let manager = Arc::new(Manager::new(resolver, bucket));
@@ -133,7 +132,6 @@ async fn run(args: Args) -> Result<()> {
         data: "Compost SMTP Server".to_string(),
         listeners: vec![Listener::create(args.smtp_bind)?],
         tls: smtp_tls.clone(),
-        max_connections: 8192,
     };
 
     for listener in &server.listeners {
