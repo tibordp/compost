@@ -16,22 +16,17 @@
  * You should have received a copy of the GNU Affero General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
-
 use async_trait::async_trait;
-use axum::extract::rejection::{TypedHeaderRejection, TypedHeaderRejectionReason};
-use axum::extract::TypedHeader;
-use axum::headers::authorization::Bearer;
-use axum::headers::Authorization;
+use axum::http::{request::Parts, StatusCode};
 use axum::{extract::FromRequestParts, RequestPartsExt};
-use http::{request::Parts, StatusCode};
-
-use jwt_simple::{
-    algorithms::{ECDSAP256PublicKeyLike, P256PublicKey},
-    claims::{JWTClaims, NoCustomClaims},
-    common::VerificationOptions,
-    reexports::coarsetime::Duration,
-    token::Token,
-};
+use axum_extra::headers::authorization::Bearer;
+use axum_extra::headers::Authorization;
+use axum_extra::typed_header::{TypedHeader, TypedHeaderRejection, TypedHeaderRejectionReason};
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
+use base64::Engine;
+use p256::ecdsa::signature::Verifier;
+use p256::ecdsa::Signature;
+use serde::Deserialize;
 
 use crate::manager::DomainKey;
 
@@ -43,28 +38,25 @@ const ERR_INVALID: &str = "`Authorization` token invalid";
 
 type Rejection = (StatusCode, &'static str);
 
-#[derive(Debug, Clone)]
-struct VerifyingKey(P256PublicKey);
+/// The leeway for token validation in seconds
+const LEEWAY: usize = 10;
 
-impl From<p256::ecdsa::VerifyingKey> for VerifyingKey {
-    fn from(key: p256::ecdsa::VerifyingKey) -> Self {
-        // Library authors: please include a way to use the underlying
-        // public key directly, without having to serialize and deserialize
-        Self(unsafe { std::mem::transmute(key) })
-    }
+#[derive(Debug, Deserialize)]
+pub enum Algorithm {
+    ES256,
 }
 
-impl ECDSAP256PublicKeyLike for VerifyingKey {
-    fn jwt_alg_name() -> &'static str {
-        "ES256"
-    }
-    fn public_key(&self) -> &P256PublicKey {
-        &self.0
-    }
-    fn key_id(&self) -> &Option<String> {
-        &None
-    }
-    fn set_key_id(&mut self, _: String) {}
+#[derive(Debug, Deserialize)]
+pub struct Header {
+    //pub alg: Algorithm,
+    pub kid: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct Payload {
+    pub sub: String,
+    pub exp: usize,
+    pub iat: usize,
 }
 
 #[derive(Debug)]
@@ -91,42 +83,63 @@ impl FromRequestParts<AppState> for Authenticated {
             })?;
 
         // Decode the JWT
-        let metadata = Token::decode_metadata(auth.token())
-            .map_err(|_| (StatusCode::UNAUTHORIZED, ERR_DECODE))?;
+        let token = auth.token();
 
-        let domain = metadata
-            .key_id()
-            .ok_or((StatusCode::UNAUTHORIZED, ERR_DECODE))?;
+        // All JWT libraries are terrible, so we do this on our own
+        let split = token.rsplitn(2, '.').collect::<Vec<_>>();
+        let (signature, message) = match split.as_slice() {
+            [signature, message] => (signature, message),
+            _ => return Err((StatusCode::UNAUTHORIZED, ERR_DECODE)),
+        };
+
+        let split = message.rsplitn(2, '.').collect::<Vec<_>>();
+        let (payload, header) = match split.as_slice() {
+            [payload, header] => (payload, header),
+            _ => return Err((StatusCode::UNAUTHORIZED, ERR_DECODE)),
+        };
+
+        let header = URL_SAFE_NO_PAD
+            .decode(header)
+            .map_err(|_| (StatusCode::UNAUTHORIZED, ERR_DECODE))?;
+        let header: Header =
+            serde_json::from_slice(&header).map_err(|_| (StatusCode::UNAUTHORIZED, ERR_DECODE))?;
 
         let domain_key = state
             .manager
-            .get_domain_key(domain, true)
+            .get_domain_key(&header.kid, true)
             .await
             .ok()
             .flatten()
             .ok_or((StatusCode::UNAUTHORIZED, ERR_INVALID))?;
 
-        let verifying_key = VerifyingKey::from(domain_key.verifying_key());
+        let verifying_key = domain_key.verifying_key();
+        let signature = URL_SAFE_NO_PAD
+            .decode(signature)
+            .ok()
+            .and_then(|s| Signature::from_slice(&s).ok())
+            .ok_or((StatusCode::UNAUTHORIZED, ERR_DECODE))?;
 
-        let _claims: JWTClaims<NoCustomClaims> = verifying_key
-            .verify_token(
-                auth.token(),
-                Some(VerificationOptions {
-                    accept_future: false,
-                    time_tolerance: Some(Duration::from_secs(10)),
-                    required_subject: Some(domain.to_string()),
-                    ..Default::default()
-                }),
-            )
-            .map_err(|e| {
-                tracing::debug!(
-                    event = "jwt_failed",
-                    error = ?e,
-                    "JWT failed verification"
-                );
+        verifying_key
+            .verify(message.as_bytes(), &signature)
+            .map_err(|_| (StatusCode::UNAUTHORIZED, ERR_INVALID))?;
 
-                (StatusCode::UNAUTHORIZED, ERR_INVALID)
-            })?;
+        let payload = URL_SAFE_NO_PAD
+            .decode(payload)
+            .map_err(|_| (StatusCode::UNAUTHORIZED, ERR_INVALID))?;
+        let payload: Payload = serde_json::from_slice(&payload)
+            .map_err(|_| (StatusCode::UNAUTHORIZED, ERR_INVALID))?;
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_secs() as usize;
+
+        if payload.exp + LEEWAY < now || payload.iat > now + LEEWAY {
+            return Err((StatusCode::UNAUTHORIZED, ERR_INVALID));
+        }
+
+        if payload.sub != domain_key.domain {
+            return Err((StatusCode::UNAUTHORIZED, ERR_INVALID));
+        }
 
         Ok(Self(domain_key))
     }

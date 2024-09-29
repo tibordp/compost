@@ -47,7 +47,6 @@ pub struct Configuration {
 
     // Ehlo parameters
     pub ehlo_require: bool,
-    pub ehlo_reject_non_fqdn: bool,
 
     // Rcpt parameters
     pub rcpt_errors_max: usize,
@@ -65,7 +64,6 @@ impl Default for Configuration {
             timeout: Duration::from_secs(300),
             transfer_limit: 250 * 1024 * 1024,
             ehlo_require: true,
-            ehlo_reject_non_fqdn: true,
             rcpt_errors_max: 5,
             rcpt_errors_wait: Duration::from_secs(5),
         }
@@ -128,15 +126,11 @@ impl PartialOrd for Address {
 
 pub trait IsTls {
     fn is_tls(&self) -> bool;
-    fn tls_version_and_cipher(&self) -> (&'static str, &'static str);
 }
 
 impl IsTls for TcpStream {
     fn is_tls(&self) -> bool {
         false
-    }
-    fn tls_version_and_cipher(&self) -> (&'static str, &'static str) {
-        ("", "")
     }
 }
 
@@ -144,45 +138,11 @@ impl IsTls for ProxiedStream<TcpStream> {
     fn is_tls(&self) -> bool {
         false
     }
-    fn tls_version_and_cipher(&self) -> (&'static str, &'static str) {
-        ("", "")
-    }
 }
 
 impl<T> IsTls for TlsStream<T> {
     fn is_tls(&self) -> bool {
         true
-    }
-
-    fn tls_version_and_cipher(&self) -> (&'static str, &'static str) {
-        let (_, conn) = self.get_ref();
-
-        (
-            match conn
-                .protocol_version()
-                .unwrap_or(rustls::ProtocolVersion::Unknown(0))
-            {
-                rustls::ProtocolVersion::SSLv2 => "SSLv2",
-                rustls::ProtocolVersion::SSLv3 => "SSLv3",
-                rustls::ProtocolVersion::TLSv1_0 => "TLSv1.0",
-                rustls::ProtocolVersion::TLSv1_1 => "TLSv1.1",
-                rustls::ProtocolVersion::TLSv1_2 => "TLSv1.2",
-                rustls::ProtocolVersion::TLSv1_3 => "TLSv1.3",
-                rustls::ProtocolVersion::DTLSv1_0 => "DTLSv1.0",
-                rustls::ProtocolVersion::DTLSv1_2 => "DTLSv1.2",
-                rustls::ProtocolVersion::DTLSv1_3 => "DTLSv1.3",
-                _ => "unknown",
-            },
-            match conn.negotiated_cipher_suite() {
-                Some(rustls::SupportedCipherSuite::Tls13(cs)) => {
-                    cs.common.suite.as_str().unwrap_or("unknown")
-                }
-                Some(rustls::SupportedCipherSuite::Tls12(cs)) => {
-                    cs.common.suite.as_str().unwrap_or("unknown")
-                }
-                None => "unknown",
-            },
-        )
     }
 }
 

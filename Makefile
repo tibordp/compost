@@ -47,7 +47,7 @@ recreate:
 
 
 run:
-	LOG_LEVEL=debug \
+	LOG_LEVEL=info \
 	AWS_ACCESS_KEY_ID=AKIAIOSFODNN7EXAMPLE \
 	AWS_SECRET_ACCESS_KEY=wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY \
 	cargo run -- \
@@ -61,7 +61,7 @@ run:
 		--prometheus
 
 run-aws:
-	LOG_LEVEL=debug \
+	LOG_LEVEL=info \
 	cargo run -- \
 		--smtp-bind [::]:1025 \
 		--api-bind [::]:1080 \

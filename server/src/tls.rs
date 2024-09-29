@@ -18,6 +18,8 @@
 */
 
 use std::{
+    fs::File,
+    io::BufReader,
     path::{Path, PathBuf},
     sync::Arc,
     time::Duration,
@@ -117,26 +119,21 @@ impl TlsProvider {
 }
 
 fn create_server_config(certificate: &Path, key: &Path) -> Result<ServerConfig, Error> {
-    let chain = rustls_pemfile::certs(&mut std::io::BufReader::new(std::fs::File::open(
-        certificate,
-    )?))?
-    .into_iter()
-    .map(rustls::Certificate)
-    .collect();
+    let chain = rustls_pemfile::certs(&mut BufReader::new(File::open(certificate)?))
+        .collect::<Result<_, _>>()?;
 
-    let key = rustls_pemfile::read_all(&mut std::io::BufReader::new(std::fs::File::open(key)?))?
-        .into_iter()
+    let key = rustls_pemfile::read_all(&mut BufReader::new(File::open(key)?))
         .filter_map(|key| match key {
-            rustls_pemfile::Item::RSAKey(key)
-            | rustls_pemfile::Item::PKCS8Key(key)
-            | rustls_pemfile::Item::ECKey(key) => Some(rustls::PrivateKey(key)),
+            Ok(rustls_pemfile::Item::Pkcs1Key(key)) => Some(Ok(key.into())),
+            Ok(rustls_pemfile::Item::Pkcs8Key(key)) => Some(Ok(key.into())),
+            Ok(rustls_pemfile::Item::Sec1Key(key)) => Some(Ok(key.into())),
+            Err(e) => Some(Err(e)),
             _ => None,
         })
         .next()
-        .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::Other, "No private key found"))?;
+        .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::Other, "No private key found"))??;
 
     let config = ServerConfig::builder()
-        .with_safe_defaults()
         .with_no_client_auth()
         .with_single_cert(chain, key)?;
 

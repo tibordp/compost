@@ -31,9 +31,9 @@ use axum_prometheus::GenericMetricLayer;
 use axum_server::tls_rustls::RustlsConfig;
 use base64::{engine::general_purpose, Engine};
 
+use axum::http::{Method, StatusCode};
 use elliptic_curve::pkcs8::EncodePublicKey;
 use futures::{StreamExt, TryStreamExt};
-use http::{Method, StatusCode};
 
 use metrics_exporter_prometheus::PrometheusHandle;
 use tokio::sync::watch;
@@ -126,6 +126,8 @@ async fn healthz() -> &'static str {
 
 impl IntoResponse for Error {
     fn into_response(self) -> Response {
+        tracing::error!(error = ?self, "Error processing request");
+
         let code = match self {
             Error::NotFound => StatusCode::NOT_FOUND,
             _ => StatusCode::INTERNAL_SERVER_ERROR,
@@ -227,7 +229,7 @@ async fn inbox(
             continuation_token = list_bucket_result.next_continuation_token.clone();
 
             for object in list_bucket_result.contents {
-                #[allow(clippy::blocks_in_if_conditions)]
+                #[allow(clippy::blocks_in_conditions)]
                 if remaining
                     .as_mut()
                     .map(|a| {
@@ -261,11 +263,15 @@ async fn inbox(
             };
 
             let headers = res.headers();
-            let Some(blob_key) = headers.get("x-amz-meta-blob-key") else {
-                return None;
+            let blob_key = headers.get("x-amz-meta-blob-key")?;
+
+            let presigned = match bucket.presign_get(blob_key, 3600, None).await {
+                Ok(presigned) => presigned,
+                Err(e) => {
+                    return Some(Err(e.into()));
+                }
             };
 
-            let presigned = bucket.presign_get(blob_key, 3600, None).unwrap();
             Some(Ok::<_, Error>(Message {
                 id: key.rsplit('/').next().unwrap().to_string(),
                 blob_url: presigned,
@@ -297,7 +303,7 @@ async fn blob(
         return Err(Error::NotFound);
     };
 
-    let presigned = bucket.presign_get(blob_key, 3600, None).unwrap();
+    let presigned = bucket.presign_get(blob_key, 3600, None).await?;
 
     Ok(Redirect::temporary(&presigned))
 }
@@ -340,7 +346,7 @@ struct Metrics;
 impl axum_prometheus::MakeDefaultHandle for Metrics {
     type Out = Metrics;
 
-    fn make_default_handle() -> Self::Out {
+    fn make_default_handle(self) -> Self::Out {
         Metrics
     }
 }

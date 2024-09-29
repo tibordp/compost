@@ -13,6 +13,7 @@ COPY ./server ./server
 COPY ./Cargo.toml ./Cargo.toml
 COPY ./Cargo.lock ./Cargo.lock
 
+
 RUN cargo build --release --bin compost_server
 
 FROM debian:bookworm-slim
