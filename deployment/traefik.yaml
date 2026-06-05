@@ -1,0 +1,46 @@
+# Traefik / Gateway API equivalent of the compost Ingress (additive).
+# Cert (compost-tls) is a DNS-01 wildcard issued by compost's own issuer — only
+# referenced here, issuance is untouched.
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: compost
+  namespace: compost
+spec:
+  gatewayClassName: traefik
+  listeners:
+    - name: https
+      protocol: HTTPS
+      port: 443
+      hostname: compost.email
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - kind: Secret
+            name: compost-tls
+      allowedRoutes:
+        namespaces:
+          from: Same
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: compost
+  namespace: compost
+spec:
+  parentRefs:
+    - name: compost
+      sectionName: https
+  hostnames:
+    - compost.email
+  rules:
+    - matches:
+        - path: { type: PathPrefix, value: /api/ }
+      backendRefs:
+        - name: compost-server
+          port: 80
+    - matches:
+        - path: { type: PathPrefix, value: / }
+      backendRefs:
+        - name: compost-web
+          port: 80
